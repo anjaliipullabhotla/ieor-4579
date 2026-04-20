@@ -1,0 +1,19 @@
+[project]
+name = "hydra-reviewer"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain-openai",
+    "langgraph",
+    "langgraph-prebuilt",
+    "openai",
+    "openpyxl",
+    "pandas",
+    "nltk",
+    "requests",
+    "tqdm",
+    "tree-sitter==0.20.4",
+    "PyGithub",
+    "python-dotenv",
+    "tiktoken",
+]
