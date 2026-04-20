@@ -1,0 +1,15 @@
+[project]
+name = "ieor-4579"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "sentence-transformers",
+    "torch",
+    "pandas",
+    "nltk",
+    "tqdm",
+    "langchain-openai",
+    "openai",
+    "tree-sitter==0.20.4",
+    "python-dotenv",
+]
