@@ -117,4 +117,9 @@ def get_additional_information(tmp_data):
                 additional_informational += "{additional information}:"
             additional_informational += "\n" + code_snippet + "\n"
 
-    return "{Patch}:\n" + patch + "\n\n" + additional_informational
+    readme = tmp_data.get('readme', '')
+    readme_section = ""
+    if readme:
+        readme_section = "\n\n{{repository context}}:\n" + readme[:500]
+
+    return "{Patch}:\n" + patch + "\n\n" + additional_informational + readme_section

@@ -9,8 +9,6 @@ from collections import defaultdict
 load_dotenv()
 
 GITHUB_API_TOKEN = os.getenv("GITHUB_API_TOKEN")
-REPO = "dmlc/dgl"
-PR_NUMBER = 1217
 HEADERS = {"Authorization": f"token {GITHUB_API_TOKEN}"}
 FILENAME = "GeneratedDatasetPython.jsonl"
 
@@ -30,6 +28,14 @@ def get_file_at_sha(repo, path, sha, headers):
     except: return ""
 
 
+def get_readme(repo, sha, headers):
+    for candidate in ["README.md", "readme.md", "README.rst", "README"]:
+        content = get_file_at_sha(repo, candidate, sha, headers)
+        if content:
+            return content
+    return ""
+
+
 def get_pr_rows(repo, pr_num):
     """Fetch PR data from GitHub and return rows as a list of dicts (in-memory)."""
     headers = {"Authorization": f"token {GITHUB_API_TOKEN}"}
@@ -44,6 +50,8 @@ def get_pr_rows(repo, pr_num):
     pr_data = get_json(f"https://api.github.com/repos/{repo}/pulls/{pr_num}", headers)
     base_sha = pr_data['base']['sha']
     head_sha = pr_data['head']['sha']
+
+    readme = get_readme(repo, base_sha, headers)
 
     rows = []
     for file_info in files_data:
@@ -74,6 +82,7 @@ def get_pr_rows(repo, pr_num):
             "old_hunk": first_comment.get('diff_hunk', '') if first_comment else '',
             "previous_file": prev_file,
             "current_file": curr_file,
+            "readme": readme,
             "input_comment": f"{{Patch}}:\n{patch}",
             "ground_truth_comments": [
                 {"comment_id": str(c['id']), "body": c['body']}

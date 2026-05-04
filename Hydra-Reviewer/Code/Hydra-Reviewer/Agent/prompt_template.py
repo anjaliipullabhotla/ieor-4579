@@ -32,10 +32,14 @@ def get_input_introduction(flag):
         input_introduction_prompt = ("The input is a patch and, optionally, additional information. The patch consists "
                                      "of all the diffs for a single file within a single code change. The additional "
                                      "information provides code snippets of certain functions or classes in the patch "
-                                     "to help enhance your understanding of the patch.")
+                                     "to help enhance your understanding of the patch. The input may also include a "
+                                     "{{repository context}} section containing the project README. When present, use it "
+                                     "to inform your review with project-level conventions, architecture, and intent.")
     else:
         input_introduction_prompt = ("The input is a patch, which consists of all the diffs for a single file within a "
-                                     "single code change. ")
+                                     "single code change. The input may also include a {{repository context}} section "
+                                     "containing the project README. When present, use it to inform your review with "
+                                     "project-level conventions, architecture, and intent.")
     return input_introduction_prompt
 
 
