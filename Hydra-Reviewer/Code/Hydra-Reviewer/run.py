@@ -16,10 +16,10 @@ load_dotenv()
 GITHUB_API_TOKEN = os.getenv("GITHUB_API_TOKEN")
 
 
-def post_to_github(repo_name, pr_number, comment_body, token):
+def post_to_github(repo_name, pr_number, comment_body):
     """Posts the final_comment as a general comment on the Pull Request."""
     try:
-        g = Github(token)
+        g = Github(GITHUB_API_TOKEN)
         repo = g.get_repo(repo_name)
         pr = repo.get_pull(int(pr_number))
         pr.create_issue_comment(comment_body)
@@ -65,48 +65,57 @@ def renumber_suggestions(text):
     return '\n'.join(lines)
 
 
-def get_review_comment(patch_with_additional_information):
+ABLATION_PRESETS = {
+    'all':          None,  # None means all agents get README (default behaviour)
+    'none':         set(),
+    'compat_only':  {'compatibility_agent'},
+    'naming_only':  {'identifier_naming_style_agent', 'identifier_naming_readability_agent'},
+    'syntax_only':  {'code_syntax_correctness_agent', 'code_semantic_correctness_agent'},
+}
+
+
+def _ctx(agent, full_ctx, no_readme_ctx, readme_agents):
+    """Return full_ctx if this agent should see the README, otherwise no_readme_ctx."""
+    if readme_agents is None:
+        return full_ctx
+    return full_ctx if agent.__name__.split('.')[-1] in readme_agents else no_readme_ctx
+
+
+def strip_readme(ctx):
+    """Remove the {{repository context}} section from a context string."""
+    marker = '\n\n{{repository context}}:'
+    idx = ctx.find(marker)
+    return ctx[:idx] if idx != -1 else ctx
+
+
+def get_review_comment(patch_with_additional_information, readme_agents=None):
+    no_readme_ctx = strip_readme(patch_with_additional_information)
     with tqdm(total=18, desc="Processing Agents") as pbar:
         with ThreadPoolExecutor(max_workers=18) as executor:
+            agent_list = [
+                (code_semantic_correctness_agent,          patch_with_additional_information),
+                (code_syntax_correctness_agent,            patch_with_additional_information),
+                (security_compliance_agent,                patch_with_additional_information),
+                (programming_handling_conventions_agent,   patch_with_additional_information),
+                (identifier_naming_style_agent,            patch_with_additional_information),
+                (code_formatting_style_agent,              patch_with_additional_information),
+                (comment_style_agent,                      patch_with_additional_information),
+                (identifier_naming_readability_agent,      patch_with_additional_information),
+                (code_logic_readability_agent,             patch_with_additional_information),
+                (comment_quality_agent,                    patch_with_additional_information),
+                (redundancy_agent,                         patch_with_additional_information),
+                (compatibility_agent,                      patch_with_additional_information),
+                (name_and_logic_consistency_agent,         patch_with_additional_information),
+                (runtime_observability_agent,              patch_with_additional_information),
+                (fault_tolerance_agent,                    patch_with_additional_information),
+                (code_testing_agent,                       patch_with_additional_information),
+                (extensibility_agent,                      patch_with_additional_information),
+                (performance_agent,                        patch_with_additional_information),
+            ]
             futures = [
-                executor.submit(run_agent_with_retry, code_semantic_correctness_agent,
-                                patch_with_additional_information, progress=pbar),
-                executor.submit(run_agent_with_retry, code_syntax_correctness_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, security_compliance_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, programming_handling_conventions_agent,
-                                patch_with_additional_information, progress=pbar),
-                executor.submit(run_agent_with_retry, identifier_naming_style_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, code_formatting_style_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, comment_style_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, identifier_naming_readability_agent,
-                                patch_with_additional_information, progress=pbar),
-                executor.submit(run_agent_with_retry, code_logic_readability_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, comment_quality_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, redundancy_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, compatibility_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, name_and_logic_consistency_agent,
-                                patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, runtime_observability_agent,
-                                patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, fault_tolerance_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, code_testing_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, extensibility_agent, patch_with_additional_information,
-                                progress=pbar),
-                executor.submit(run_agent_with_retry, performance_agent,
-                                patch_with_additional_information, progress=pbar)
+                executor.submit(run_agent_with_retry, agent,
+                                _ctx(agent, ctx, no_readme_ctx, readme_agents), progress=pbar)
+                for agent, ctx in agent_list
             ]
 
             results = [future.result() for future in futures]
@@ -125,20 +134,20 @@ def get_review_comment(patch_with_additional_information):
             return input_comment, summary_comment, clean_up_comment, final_comment
         
 
-def run_jsonl(filename):
+def run_jsonl(filename, output_field='hydra_comment_reproduction', ablation='all'):
+    readme_agents = ABLATION_PRESETS[ablation]
     datas = jh.read_jsonl_file(filename)
     print(f'Data loaded successfully. {len(datas)} rows total.')
     times = []
     for i, data in enumerate(datas):
-        if data.get('hydra_comment_reproduction'):
+        if data.get(output_field):
             print(f'Row {i}: already processed, skipping.')
             continue
 
         print(f'Row {i}: processing...')
         patch_with_additional_information = get_additional_information_agent.get_additional_information(data)
         start_time = time.time()
-        _, _, _, final_comment = get_review_comment(
-            patch_with_additional_information)
+        _, _, _, final_comment = get_review_comment(patch_with_additional_information, readme_agents=readme_agents)
         end_time = time.time()
         print("-" * 80)
         duration = end_time - start_time
@@ -146,12 +155,13 @@ def run_jsonl(filename):
         print(f"Generating comments took {duration:.2f} seconds.", flush=True)
         print(final_comment)
 
-        datas[i]['hydra_comment_reproduction'] = final_comment
-        with open(args.path, 'w', encoding='utf-8') as f:
+        datas[i][output_field] = final_comment
+        with open(filename, 'w', encoding='utf-8') as f:
             for item in datas:
                 f.write(json.dumps(item, ensure_ascii=False) + '\n')
         print(f'Row {i}: saved.')
-    print(f"Average duration to compute review comment: {sum(times) / len(times)}")
+    if times:
+        print(f"Average duration to compute review comment: {sum(times) / len(times):.2f}s")
 
 
 def run_pr(repo, pr_num):
@@ -168,7 +178,7 @@ def run_pr(repo, pr_num):
         combined_comment = "\n\n---\n\n".join(all_final_comments)
         print("\n" + "=" * 80)
         print(combined_comment)
-        post_to_github(args.repo, args.number, combined_comment, GITHUB_API_TOKEN)
+        post_to_github(args.repo, args.number, combined_comment)
 
 
 
@@ -186,6 +196,10 @@ if __name__ == "__main__":
     # JSONL Mode
     jsonl_parser = subparsers.add_parser("jsonl", help="Process a local JSONL file")
     jsonl_parser.add_argument("path", type=str, help="Path to .jsonl file")
+    jsonl_parser.add_argument("--field", default="hydra_comment_reproduction",
+                              help="Output field name (default: hydra_comment_reproduction)")
+    jsonl_parser.add_argument("--ablation", default="all", choices=list(ABLATION_PRESETS.keys()),
+                              help="README injection preset (default: all)")
 
     # PR Mode
     pr_parser = subparsers.add_parser("pr", help="Review a specific GitHub PR")
@@ -194,7 +208,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.mode == "jsonl":
-        run_jsonl(args.path)
+        run_jsonl(args.path, output_field=args.field, ablation=args.ablation)
     elif args.mode == "pr":
         run_pr(args.repo, args.number)
     else:
